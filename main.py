@@ -418,22 +418,26 @@ def examiner_ui(ex_id: int):
     examiner = Examiner(ex_id)
 
     def que_add():
-        #TODO: why label arent read??????
+        # TODO: why label arent read??????
         def send():
-            try:
-                tr_mark = mark.get()
-                if tr_mark <= 4:
-                    tr_mark = 4
-                elif tr_mark <= 7:
-                    tr_mark = 7
-                else:
-                    tr_mark = 10
-                examiner.add_question(subject.get(), tr_mark, que_txt.get(
-                    "1.0", "end-1c"))
-            except Exception:
-                showerror("Error", "Что-то пошло не так")
-            finally:
-                que_win.destroy()
+            if mark.get() == "" or subject.get() == "" or que_txt.get("1.0",
+                                                                      "end-1c") \
+                    == "":
+                showerror("Error", "Введите все аргументы")
+            else:
+                try:
+                    tr_mark = mark.get()
+                    if tr_mark <= 4:
+                        tr_mark = 4
+                    elif tr_mark <= 7:
+                        tr_mark = 7
+                    else:
+                        tr_mark = 10
+                    examiner.add_question(subject.get(), tr_mark, que_txt.get(
+                        "1.0", "end-1c"))
+                except Exception:
+                    showerror("Error", "Что-то пошло не так")
+            que_win.destroy()
 
         que_win = Tk()
         que_win.title("Добавление вопроса")
