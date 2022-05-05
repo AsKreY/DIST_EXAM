@@ -326,63 +326,6 @@ def answers_input():
     return answers
 
 
-def exam_reg_ui(student: Student):
-    def ex_reg():
-        if grade.get() == "" or subject.get() == "":
-            showerror("Error", "Введите данные")
-        else:
-            expected_grade = grade.get()
-            if expected_grade <= 4:
-                expected_grade = 4
-            elif expected_grade <= 7:
-                expected_grade = 7
-            else:
-                expected_grade = 10
-
-            examiners_id = student.reg_to_exam(subject.get(),
-                                               expected_grade)
-            if examiners_id == -1:
-                return
-            questions = student.get_questions(subject.get(),
-                                              expected_grade, examiners_id)
-
-            answers = answers_input()
-
-            student.create_answer_file(questions, answers)
-
-            exam_reg_win.destroy()
-
-    exam_reg_win = Tk()
-    exam_reg_win.title("Регистрация на экзамен")
-    exam_reg_win.maxsize(width=500, height=400)
-    exam_reg_win.minsize(width=500, height=400)
-
-    subject_lbl = ttk.Label(exam_reg_win, text="Экзамен :",
-                            font='Verdana 10 bold')
-    subject_lbl.place(x=0, y=0)
-
-    grade_lbl = ttk.Label(exam_reg_win, text="Желаемая оценка :",
-                          font='Verdana 10 bold')
-    grade_lbl.place(x=0, y=30)
-
-    subject = tk.StringVar()
-    grade = tk.IntVar()
-
-    subject_ent = ttk.Entry(exam_reg_win, width=40,
-                            textvariable=subject)
-    subject_ent.focus()
-    subject_ent.place(x=180, y=0)
-
-    grade_ent = ttk.Entry(exam_reg_win, width=30, textvariable=grade)
-    grade_ent.place(x=180, y=33)
-
-    sign_up_btn = ttk.Button(exam_reg_win, text="Зарегистрироваться",
-                             command=ex_reg)
-    sign_up_btn.place(x=0, y=70)
-
-    exam_reg_win.mainloop()
-
-
 def student_ui(st_id: int):
     student = Student(st_id)
 
@@ -397,8 +340,62 @@ def student_ui(st_id: int):
                                                           note[2])
         showinfo("Экзамены", result)
 
-    def exam_reg_ui_in():
-        exam_reg_ui(student)
+    def exam_reg_ui():
+        def ex_reg():
+            if grade.get() == "" or subject.get() == "":
+                showerror("Error", "Введите данные")
+            else:
+                expected_grade = grade.get()
+                if expected_grade <= 4:
+                    expected_grade = 4
+                elif expected_grade <= 7:
+                    expected_grade = 7
+                else:
+                    expected_grade = 10
+
+                examiners_id = student.reg_to_exam(subject.get(),
+                                                   expected_grade)
+                if examiners_id == -1:
+                    return
+                questions = student.get_questions(subject.get(),
+                                                  expected_grade,
+                                                  examiners_id)
+
+                answers = answers_input()
+
+                student.create_answer_file(questions, answers)
+
+                exam_reg_win.destroy()
+
+        exam_reg_win = Tk()
+        exam_reg_win.title("Регистрация на экзамен")
+        exam_reg_win.maxsize(width=500, height=400)
+        exam_reg_win.minsize(width=500, height=400)
+
+        subject_lbl = ttk.Label(exam_reg_win, text="Экзамен :",
+                                font='Verdana 10 bold')
+        subject_lbl.place(x=0, y=0)
+
+        grade_lbl = ttk.Label(exam_reg_win, text="Желаемая оценка :",
+                              font='Verdana 10 bold')
+        grade_lbl.place(x=0, y=30)
+
+        subject = tk.StringVar()
+        grade = tk.IntVar()
+
+        subject_ent = ttk.Entry(exam_reg_win, width=40,
+                                textvariable=subject)
+        subject_ent.focus()
+        subject_ent.place(x=180, y=0)
+
+        grade_ent = ttk.Entry(exam_reg_win, width=30, textvariable=grade)
+        grade_ent.place(x=180, y=33)
+
+        sign_up_btn = ttk.Button(exam_reg_win, text="Зарегистрироваться",
+                                 command=ex_reg)
+        sign_up_btn.place(x=0, y=70)
+
+        exam_reg_win.mainloop()
 
     win = Tk()
     win.title("СДСЭ студент")
@@ -408,7 +405,7 @@ def student_ui(st_id: int):
     btn_grade = ttk.Button(win, text="Информация об экзаменах",
                            command=grade_showing)
     btn_grade.place(x=0, y=0)
-    btn_reg = ttk.Button(win, text="Начать экзамен", command=exam_reg_ui_in)
+    btn_reg = ttk.Button(win, text="Начать экзамен", command=exam_reg_ui)
     btn_reg.place(x=0, y=30)
 
     win.mainloop()
@@ -482,7 +479,7 @@ def examiner_ui(ex_id: int):
 
     def check_work():
         def open_work():
-            os.system("xdg-open works/.pdf".format(work_id.get()))
+            os.system("xdg-open works/{}.pdf".format(work_id.get()))
 
         def rate():
             if work_id.get() == "" or mark.get() == "":
@@ -502,7 +499,7 @@ def examiner_ui(ex_id: int):
         mark_lbl = ttk.Label(check_win, text="Оценка :")
         mark_lbl.place(x=0, y=30)
 
-        work_id = tk.StringVar()
+        work_id = tk.IntVar()
         work_id_ent = ttk.Entry(check_win, width=30, textvariable=work_id)
         work_id_ent.place(x=100, y=0)
 
