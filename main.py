@@ -82,7 +82,16 @@ class Student(Person):
         num_of_retakes = 0 if len(tmp) == 0 else (tmp[0][0] + 1)
         if num_of_retakes != 0:
             if num_of_retakes > 2:
-                raise ValueError("You are out of this university")
+                showerror("Error", "Too many retakes")
+                return -1
+            self._db_access.sql.execute("SELECT grade FROM exam_db WHERE"
+                                        "student_id=:self_id AND "
+                                        "subject=:subject_inp",
+                                        {"self_id": self._id,
+                                         "subject_inp": subject})
+            if self._db_access.sql.fetchall()[0] > 2:
+                showerror("Error", "Exam has already been passed")
+                return -1
             self._db_access.sql.execute("DELETE FROM exam_db WHERE "
                                         "student_id=:self_id AND "
                                         "subject=:subject_inp",
@@ -178,12 +187,22 @@ class Examiner(Person):
         work_ids = self._db_access.sql.fetchall()
         return work_ids
 
-    def check_work(self, work_id, mark):
-        self._db_access.sql.execute("UPDATE exam_db SET grade=:smth WHERE "
-                                    "work_id=:smth_work",
-                                    {"smth": mark, "smth_work": work_id})
-        self._db_access.db.commit()
-
+    def check_work(self, work_id: int, mark: int):
+        if 1 <= mark <= 10:
+            if mark <= 2:
+                self._db_access.sql.execute("UPDATE exam_db SET grade=:smth"
+                                            "WHERE work_id=:smth_work",
+                                            {"smth": mark,
+                                             "smth_work": work_id})
+            else:
+                self._db_access.sql.execute("UPDATE exam_db SET grade=:smth, "
+                                            "retake_nums = retake_nums + 1"
+                                            "WHERE work_id=:smth_work",
+                                            {"smth": mark,
+                                             "smth_work": work_id})
+            self._db_access.db.commit()
+        else:
+            showerror("Error", "Incorrect mark")
 
 def enter_system(login: str, password: str, user_type: int, db_cursor:
                  sqlite3.Cursor) -> int:
@@ -322,6 +341,8 @@ def exam_reg_ui(student: Student):
 
             examiners_id = student.reg_to_exam(subject.get(),
                                                expected_grade)
+            if examiners_id == -1:
+                return
             questions = student.get_questions(subject.get(),
                                               expected_grade, examiners_id)
 
@@ -397,6 +418,7 @@ def examiner_ui(ex_id: int):
     examiner = Examiner(ex_id)
 
     def que_add():
+        #TODO: why label arent read??????
         def send():
             try:
                 tr_mark = mark.get()
@@ -672,9 +694,9 @@ def login_ui():
     pass_entry.place(x=200, y=260)
 
     r_b_st = ttk.Radiobutton(win, text='Студент', value=0,
-                                        variable=var).place(x=160, y=285)
+                             variable=var).place(x=160, y=285)
     r_b_ex = ttk.Radiobutton(win, text='Эказменатор',
-                                          value=1, variable=var).place(
+                             value=1, variable=var).place(
         x=270, y=285)
 
     # button login and clear
@@ -696,5 +718,6 @@ def login_ui():
 if __name__ == '__main__':
     try:
         login_ui()
+        #exam_reg_ui(Student(158151843))
     except Exception:
         showerror("Error", "Ошибка")
