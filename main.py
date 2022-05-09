@@ -107,11 +107,20 @@ class Student(Person):
             "FROM subject_department "
             "WHERE subject=:subject_inp",
             {"subject_inp": subject})
-        subj_department = self._db_access.sql.fetchall()[0][0]
+        subj_department = self._db_access.sql.fetchall()
+        if len(subj_department) == 0:
+            showerror("Error", "Название предмета некорректно")
+            return -1
+
         self._db_access.sql.execute("SELECT * FROM examiners WHERE "
                                     "examiners_department=:subj_dep",
-                                    {"subj_dep": subj_department})
-        examiner = choice(self._db_access.sql.fetchall())
+                                    {"subj_dep": subj_department[0][0]})
+        examiners = self._db_access.sql.fetchall()
+        if len(examiners) == 0:
+            showerror("Error", "Экзаменаторы отсутствуют")
+            return -1
+
+        examiner = choice(examiners)
         self._db_access.sql.execute(
             "INSERT INTO exam_db (student_id, subject, retake_nums, "
             "expected_grade, examiner_id) values(?, ?, ?, ?, ?)",
@@ -197,14 +206,14 @@ class Examiner(Person):
     def check_work(self, work_id: int, mark: int):
         if 1 <= mark <= 10:
             if mark > 2:
-                self._db_access.sql.execute("UPDATE exam_db SET grade=:smth"
-                                            "WHERE work_id=:smth_work",
+                self._db_access.sql.execute("""UPDATE exam_db SET grade=:smth
+                                            WHERE work_id=:smth_work""",
                                             {"smth": mark,
                                              "smth_work": work_id})
             else:
-                self._db_access.sql.execute("UPDATE exam_db SET grade=:smth, "
-                                            "retake_nums = (retake_nums + 1)"
-                                            "WHERE work_id=:smth_work",
+                self._db_access.sql.execute("""UPDATE exam_db SET grade=:smth,
+                                            retake_nums = (retake_nums + 1)
+                                            WHERE work_id=:smth_work""",
                                             {"smth": mark,
                                              "smth_work": work_id})
             self._db_access.db.commit()
@@ -372,7 +381,6 @@ def student_ui(st_id: int):
 
                 answers = answers_input()
 
-                student.create_answer_file(questions, answers)
                 student.create_answer_file(questions, answers, subject)
 
                 exam_reg_win.destroy()
@@ -713,6 +721,5 @@ def login_ui():
 if __name__ == '__main__':
     try:
         login_ui()
-        # exam_reg_ui(Student(158151843))
     except Exception:
         showerror("Error", "Ошибка")
