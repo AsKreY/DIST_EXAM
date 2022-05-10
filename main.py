@@ -4,8 +4,7 @@ import sqlite3  # DB
 import tkinter as tk  # GUI
 from abc import ABCMeta  # Abstractions
 from random import choice, sample  # random examiners and questions
-from time import sleep
-from tkinter import filedialog, ttk, Tk  # GUI
+from tkinter import filedialog, ttk, Tk, Toplevel  # GUI
 from tkinter.messagebox import showerror, showinfo  # GUI
 from uuid import uuid4  # id
 
@@ -80,9 +79,24 @@ class Student(Person):
                                      "subject_inp": subject})
         tmp = self._db_access.sql.fetchall()
         num_of_retakes = 0 if len(tmp) == 0 else (tmp[0][0] + 1)
+
+        self._db_access.sql.execute("SELECT grade FROM exam_db WHERE "
+                                    "student_id=:self_id AND "
+                                    "subject=:subject_inp",
+                                    {"self_id": self._id,
+                                     "subject_inp": subject})
+        prev_grade = self._db_access.sql.fetchall()
+
+        if len(prev_grade) > 0 and prev_grade[0][0] is None:
+            showerror("Error", "Exam has not been checked yet")
+            return -1
         if num_of_retakes != 0:
             if num_of_retakes > 2:
-                raise ValueError("You are out of this university")
+                showerror("Error", "Too many retakes")
+                return -1
+            if prev_grade[0][0] > 2:
+                showerror("Error", "Exam has already been passed")
+                return -1
             self._db_access.sql.execute("DELETE FROM exam_db WHERE "
                                         "student_id=:self_id AND "
                                         "subject=:subject_inp",
@@ -93,11 +107,20 @@ class Student(Person):
             "FROM subject_department "
             "WHERE subject=:subject_inp",
             {"subject_inp": subject})
-        subj_department = self._db_access.sql.fetchall()[0][0]
+        subj_department = self._db_access.sql.fetchall()
+        if len(subj_department) == 0:
+            showerror("Error", "Название предмета некорректно")
+            return -1
+
         self._db_access.sql.execute("SELECT * FROM examiners WHERE "
                                     "examiners_department=:subj_dep",
-                                    {"subj_dep": subj_department})
-        examiner = choice(self._db_access.sql.fetchall())
+                                    {"subj_dep": subj_department[0][0]})
+        examiners = self._db_access.sql.fetchall()
+        if len(examiners) == 0:
+            showerror("Error", "Экзаменаторы отсутствуют")
+            return -1
+
+        examiner = choice(examiners)
         self._db_access.sql.execute(
             "INSERT INTO exam_db (student_id, subject, retake_nums, "
             "expected_grade, examiner_id) values(?, ?, ?, ?, ?)",
@@ -133,13 +156,10 @@ class Student(Person):
                                                             "*.pdf")])
         pdf.output(filename)
         os.system("xdg-open {}".format(filename))
-        sleep(1)  # So now file may be opened
-
-        os.remove(filename)
 
         return question_list
 
-    def create_answer_file(self, questions: list, answers: list) -> int:
+    def create_answer_file(self, questions: list, answers: list, subject: str):
         """ Create pdf with answers
 
         :param questions:
@@ -159,7 +179,12 @@ class Student(Person):
 
         filename = int(uuid4()) % (10 ** 9 + 7)
         pdf.output("works/{}.pdf".format(filename))
-        return filename
+        self._db_access.sql.execute("UPDATE exam_db SET work_id=:id_work "
+                                    "WHERE student_id=:self_id AND "
+                                    "subject=:subject_inp",
+                                    {"id_work": filename, "self_id": self._id,
+                                     "subject_inp": subject})
+        self._db_access.db.commit()
 
 
 class Examiner(Person):
@@ -178,15 +203,26 @@ class Examiner(Person):
         work_ids = self._db_access.sql.fetchall()
         return work_ids
 
-    def check_work(self, work_id, mark):
-        self._db_access.sql.execute("UPDATE exam_db SET grade=:smth WHERE "
-                                    "work_id=:smth_work",
-                                    {"smth": mark, "smth_work": work_id})
-        self._db_access.db.commit()
+    def check_work(self, work_id: int, mark: int):
+        if 1 <= mark <= 10:
+            if mark > 2:
+                self._db_access.sql.execute("""UPDATE exam_db SET grade=:smth
+                                            WHERE work_id=:smth_work""",
+                                            {"smth": mark,
+                                             "smth_work": work_id})
+            else:
+                self._db_access.sql.execute("""UPDATE exam_db SET grade=:smth,
+                                            retake_nums = (retake_nums + 1)
+                                            WHERE work_id=:smth_work""",
+                                            {"smth": mark,
+                                             "smth_work": work_id})
+            self._db_access.db.commit()
+        else:
+            showerror("Error", "Incorrect mark")
 
 
 def enter_system(login: str, password: str, user_type: int, db_cursor:
-                 sqlite3.Cursor) -> int:
+sqlite3.Cursor) -> int:
     """
     :param db_cursor: cursor of DB
     :param login: user_login
@@ -277,7 +313,7 @@ def answers_input():
         answers.append(text_three.get("1.0", "end-1c"))
         ans_win.destroy()
 
-    ans_win = Tk()
+    ans_win = Toplevel()
     ans_win.maxsize(width=805, height=925)
     ans_win.minsize(width=805, height=925)
     ans_win.title("Ввод ответов")
@@ -307,61 +343,6 @@ def answers_input():
     return answers
 
 
-def exam_reg_ui(student: Student):
-    def ex_reg():
-        if grade.get() == "" or subject.get() == "":
-            showerror("Error", "Введите данные")
-        else:
-            expected_grade = grade.get()
-            if expected_grade <= 4:
-                expected_grade = 4
-            elif expected_grade <= 7:
-                expected_grade = 7
-            else:
-                expected_grade = 10
-
-            examiners_id = student.reg_to_exam(subject.get(),
-                                               expected_grade)
-            questions = student.get_questions(subject.get(),
-                                              expected_grade, examiners_id)
-
-            answers = answers_input()
-
-            student.create_answer_file(questions, answers)
-
-            exam_reg_win.destroy()
-
-    exam_reg_win = Tk()
-    exam_reg_win.title("Регистрация на экзамен")
-    exam_reg_win.maxsize(width=500, height=400)
-    exam_reg_win.minsize(width=500, height=400)
-
-    subject_lbl = ttk.Label(exam_reg_win, text="Экзамен :",
-                            font='Verdana 10 bold')
-    subject_lbl.place(x=0, y=0)
-
-    grade_lbl = ttk.Label(exam_reg_win, text="Желаемая оценка :",
-                          font='Verdana 10 bold')
-    grade_lbl.place(x=0, y=30)
-
-    subject = tk.StringVar()
-    grade = tk.IntVar()
-
-    subject_ent = ttk.Entry(exam_reg_win, width=40,
-                            textvariable=subject)
-    subject_ent.focus()
-    subject_ent.place(x=180, y=0)
-
-    grade_ent = ttk.Entry(exam_reg_win, width=30, textvariable=grade)
-    grade_ent.place(x=180, y=33)
-
-    sign_up_btn = ttk.Button(exam_reg_win, text="Зарегистрироваться",
-                             command=ex_reg)
-    sign_up_btn.place(x=0, y=70)
-
-    exam_reg_win.mainloop()
-
-
 def student_ui(st_id: int):
     student = Student(st_id)
 
@@ -376,8 +357,57 @@ def student_ui(st_id: int):
                                                           note[2])
         showinfo("Экзамены", result)
 
-    def exam_reg_ui_in():
-        exam_reg_ui(student)
+    def exam_reg_ui():
+        def ex_reg():
+            subject = subject_ent.get("1.0", "end-1c")
+            if grade_ent.get("1.0", "end-1c") == "" or \
+                    subject == "":
+                showerror("Error", "Введите данные")
+            else:
+                expected_grade = int(grade_ent.get("1.0", "end-1c"))
+                if expected_grade <= 4:
+                    expected_grade = 4
+                elif expected_grade <= 7:
+                    expected_grade = 7
+                else:
+                    expected_grade = 10
+
+                examiners_id = student.reg_to_exam(subject, expected_grade)
+                if examiners_id == -1:
+                    return
+                questions = student.get_questions(subject,
+                                                  expected_grade,
+                                                  examiners_id)
+
+                answers = answers_input()
+
+                student.create_answer_file(questions, answers, subject)
+
+                exam_reg_win.destroy()
+
+        exam_reg_win = Toplevel()
+        exam_reg_win.title("Регистрация на экзамен")
+        exam_reg_win.maxsize(width=500, height=400)
+        exam_reg_win.minsize(width=500, height=400)
+
+        subject_lbl = ttk.Label(exam_reg_win, text="Экзамен :",
+                                font='Verdana 10 bold')
+        subject_lbl.place(x=0, y=0)
+
+        grade_lbl = ttk.Label(exam_reg_win, text="Желаемая оценка :",
+                              font='Verdana 10 bold')
+        grade_lbl.place(x=0, y=30)
+
+        subject_ent = tk.Text(exam_reg_win, width=40, height=1)
+        subject_ent.focus()
+        subject_ent.place(x=180, y=0)
+
+        grade_ent = tk.Text(exam_reg_win, width=30, height=1)
+        grade_ent.place(x=180, y=33)
+
+        sign_up_btn = ttk.Button(exam_reg_win, text="Зарегистрироваться",
+                                 command=ex_reg)
+        sign_up_btn.place(x=0, y=70)
 
     win = Tk()
     win.title("СДСЭ студент")
@@ -387,7 +417,7 @@ def student_ui(st_id: int):
     btn_grade = ttk.Button(win, text="Информация об экзаменах",
                            command=grade_showing)
     btn_grade.place(x=0, y=0)
-    btn_reg = ttk.Button(win, text="Начать экзамен", command=exam_reg_ui_in)
+    btn_reg = ttk.Button(win, text="Начать экзамен", command=exam_reg_ui)
     btn_reg.place(x=0, y=30)
 
     win.mainloop()
@@ -398,22 +428,26 @@ def examiner_ui(ex_id: int):
 
     def que_add():
         def send():
-            try:
-                tr_mark = mark.get()
-                if tr_mark <= 4:
-                    tr_mark = 4
-                elif tr_mark <= 7:
-                    tr_mark = 7
-                else:
-                    tr_mark = 10
-                examiner.add_question(subject.get(), tr_mark, que_txt.get(
-                    "1.0", "end-1c"))
-            except Exception:
-                showerror("Error", "Что-то пошло не так")
-            finally:
-                que_win.destroy()
+            if mark.get("1.0", "end-1c") == "" or \
+                    subject.get("1.0", "end-1c") == "" or \
+                    que_txt.get("1.0", "end-1c") == "":
+                showerror("Error", "Введите все аргументы")
+            else:
+                try:
+                    tr_mark = int(mark.get("1.0", "end-1c"))
+                    if tr_mark <= 4:
+                        tr_mark = 4
+                    elif tr_mark <= 7:
+                        tr_mark = 7
+                    else:
+                        tr_mark = 10
+                    examiner.add_question(subject.get("1.0", "end-1c"), tr_mark,
+                                          que_txt.get(
+                                              "1.0", "end-1c"))
+                except Exception:
+                    showerror("Error", "Что-то пошло не так")
 
-        que_win = Tk()
+        que_win = Toplevel()
         que_win.title("Добавление вопроса")
         que_win.minsize(height=400, width=500)
         que_win.maxsize(height=400, width=500)
@@ -427,22 +461,17 @@ def examiner_ui(ex_id: int):
         que_lbl = ttk.Label(que_win, text="Введите вопрос :")
         que_lbl.place(x=0, y=60)
 
-        subject = tk.StringVar()
-        mark = tk.IntVar()
+        subject = tk.Text(que_win, width=30, height=1)
+        subject.place(x=155, y=0)
 
-        subject_ent = ttk.Entry(que_win, width=30, textvariable=subject)
-        subject_ent.place(x=155, y=0)
-
-        mark_ent = ttk.Entry(que_win, width=10, textvariable=mark)
-        mark_ent.place(x=140, y=30)
+        mark = tk.Text(que_win, width=10, height=1)
+        mark.place(x=140, y=30)
 
         que_txt = tk.Text(que_win, height=13, width=50)
         que_txt.place(x=0, y=80)
 
         send_btn = ttk.Button(que_win, text="Добавить вопрос", command=send)
         send_btn.place(x=0, y=310)
-
-        que_win.mainloop()
 
     def seek_works():
         result_str = "Непроверенные работы:\n"
@@ -456,7 +485,7 @@ def examiner_ui(ex_id: int):
 
     def check_work():
         def open_work():
-            os.system("xdg-open works/.pdf".format(work_id.get()))
+            os.system("xdg-open works/{}.pdf".format(work_id.get()))
 
         def rate():
             if work_id.get() == "" or mark.get() == "":
@@ -465,7 +494,7 @@ def examiner_ui(ex_id: int):
                 examiner.check_work(work_id.get(), mark.get())
                 check_win.destroy()
 
-        check_win = Tk()
+        check_win = Toplevel()
         check_win.title("Проверка работы")
         check_win.minsize(height=400, width=500)
         check_win.maxsize(height=400, width=500)
@@ -476,7 +505,7 @@ def examiner_ui(ex_id: int):
         mark_lbl = ttk.Label(check_win, text="Оценка :")
         mark_lbl.place(x=0, y=30)
 
-        work_id = tk.StringVar()
+        work_id = tk.IntVar()
         work_id_ent = ttk.Entry(check_win, width=30, textvariable=work_id)
         work_id_ent.place(x=100, y=0)
 
@@ -491,8 +520,6 @@ def examiner_ui(ex_id: int):
         submit_mark_btn = ttk.Button(check_win, text="Оценить работу",
                                      command=rate)
         submit_mark_btn.place(x=0, y=90)
-
-        check_win.mainloop()
 
     ex_win = Tk()
     ex_win.title("СДСЭ")
@@ -550,7 +577,7 @@ def signup_ui():
 
     # start Signup Window	
 
-    win_sign_up = Tk()
+    win_sign_up = Toplevel()
     win_sign_up.title("СДСЭ")
     win_sign_up.maxsize(width=500, height=400)
     win_sign_up.minsize(width=500, height=400)
@@ -607,8 +634,6 @@ def signup_ui():
     sign_up_btn = ttk.Button(win_sign_up, text="К авторизации",
                              command=switch)
     sign_up_btn.place(x=350, y=20)
-
-    win_sign_up.mainloop()
 
 
 def login_ui():
@@ -672,9 +697,9 @@ def login_ui():
     pass_entry.place(x=200, y=260)
 
     r_b_st = ttk.Radiobutton(win, text='Студент', value=0,
-                                        variable=var).place(x=160, y=285)
+                             variable=var).place(x=160, y=285)
     r_b_ex = ttk.Radiobutton(win, text='Эказменатор',
-                                          value=1, variable=var).place(
+                             value=1, variable=var).place(
         x=270, y=285)
 
     # button login and clear
